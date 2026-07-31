@@ -270,6 +270,11 @@
   .cat-bar-ro-top .n{ color:var(--text-primary); font-weight:500; }
   .cat-bar-ro-top .v{ color:var(--text-secondary); font-variant-numeric:tabular-nums; }
   .tx-checkbox-col{ width:26px; }
+  .tx-toolbar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0 14px; }
+  .tx-toolbar select, .tx-toolbar input{ background:var(--surface-1); border-radius:8px; padding:7px 10px; font-size:12.5px; color:var(--text-primary); }
+  th.sortable{ cursor:pointer; user-select:none; }
+  th.sortable:hover{ color:var(--accent); }
+  th.sortable .sort-arrow{ font-size:9px; margin-left:3px; color:var(--accent); }
 
   .month-label-row{ display:flex; align-items:center; gap:10px; margin-bottom:18px; }
   .month-label-row input{ font-weight:700; font-size:19px; background:transparent; border:1px solid transparent; border-radius:8px; padding:4px 8px; color:var(--text-primary); flex:1; }
@@ -871,11 +876,24 @@ function monthTemplate(){
 
       <h3 style="margin-top:22px;">Todas as compras deste mês</h3>
       <div class="card-sub" id="tx-sub">Nenhuma compra ainda</div>
+      <div class="tx-toolbar">
+        <input type="text" id="tx-search" class="cell" placeholder="🔎 Buscar por estabelecimento…" style="border:1px solid var(--border); max-width:220px;">
+        <select id="tx-filter-category" class="cell" style="border:1px solid var(--border);"></select>
+        <select id="tx-sort" class="cell" style="border:1px solid var(--border);">
+          <option value="date-desc">Data (mais recente primeiro)</option>
+          <option value="date-asc">Data (mais antiga primeiro)</option>
+          <option value="value-desc">Valor (maior primeiro)</option>
+          <option value="value-asc">Valor (menor primeiro)</option>
+          <option value="category">Categoria (A-Z)</option>
+          <option value="description">Estabelecimento (A-Z)</option>
+        </select>
+        <button class="btn ghost" id="tx-clear-filters" style="font-size:12px; padding:6px 10px;">Limpar filtros</button>
+      </div>
       <div style="overflow-x:auto;">
       <table>
         <thead><tr>
-          <th>Data</th><th>Estabelecimento</th><th class="right">Valor (R$)</th>
-          <th>Classificação</th><th>Subcategoria</th><th class="center">Parcelado</th><th class="center">Qtd Parcelas</th><th class="center">Parcela Atual</th><th></th>
+          <th class="sortable" data-sort-key="date">Data</th><th>Estabelecimento</th><th class="right sortable" data-sort-key="value">Valor (R$)</th>
+          <th class="sortable" data-sort-key="category">Classificação</th><th>Subcategoria</th><th class="center">Parcelado</th><th class="center">Qtd Parcelas</th><th class="center">Parcela Atual</th><th></th>
         </tr></thead>
         <tbody id="transactions-body"></tbody>
       </table>
@@ -986,6 +1004,30 @@ function renderMonth(){
     document.getElementById('import-preview-wrap').style.display = 'none';
   });
   document.getElementById('confirm-import-btn').addEventListener('click', confirmImport);
+
+  document.getElementById('tx-search').addEventListener('input', (e) => { TX_VIEW.search = e.target.value; renderTransactions(); });
+  document.getElementById('tx-filter-category').addEventListener('change', (e) => { TX_VIEW.categoryId = e.target.value; renderTransactions(); });
+  document.getElementById('tx-sort').value = TX_VIEW.sort;
+  document.getElementById('tx-sort').addEventListener('change', (e) => { TX_VIEW.sort = e.target.value; renderTransactions(); });
+  document.getElementById('tx-clear-filters').addEventListener('click', () => {
+    TX_VIEW = { search:'', categoryId:'', sort:'date-desc' };
+    document.getElementById('tx-search').value = '';
+    document.getElementById('tx-sort').value = 'date-desc';
+    renderTransactions();
+  });
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      if(key === 'category'){ TX_VIEW.sort = 'category'; }
+      else {
+        const [curKey, curDir] = TX_VIEW.sort.includes('-') ? TX_VIEW.sort.split('-') : [TX_VIEW.sort, 'asc'];
+        const nextDir = (curKey === key && curDir === 'desc') ? 'asc' : 'desc';
+        TX_VIEW.sort = `${key}-${nextDir}`;
+      }
+      document.getElementById('tx-sort').value = TX_VIEW.sort;
+      renderTransactions();
+    });
+  });
 }
 
 function addTypeFromInput(){
@@ -1184,23 +1226,82 @@ function renderCategoryManager(){
 
 /* ======================= COMPRAS / TRANSAÇÕES DO CARTÃO ======================= */
 let IMPORT_PREVIEW = [];
+let TX_VIEW = { search:'', categoryId:'', sort:'date-desc' };
+const NEW_CATEGORY_OPTION = '__new__';
 
 function categoryOptionsHTML(selectedId){
-  return STATE.categoryDefs.map(c => `<option value="${c.id}" ${c.id===selectedId?'selected':''}>${escapeAttr(c.name)}</option>`).join('');
+  return STATE.categoryDefs.map(c => `<option value="${c.id}" ${c.id===selectedId?'selected':''}>${escapeAttr(c.name)}</option>`).join('')
+    + `<option value="${NEW_CATEGORY_OPTION}">+ Nova categoria…</option>`;
 }
 function subcategoryOptionsHTML(catId, selectedId){
   const cat = STATE.categoryDefs.find(c=>c.id===catId);
   const subs = cat ? cat.subcategories : [];
   return `<option value="" ${!selectedId?'selected':''}>—</option>` +
-    subs.map(s => `<option value="${s.id}" ${s.id===selectedId?'selected':''}>${escapeAttr(s.name)}</option>`).join('');
+    subs.map(s => `<option value="${s.id}" ${s.id===selectedId?'selected':''}>${escapeAttr(s.name)}</option>`).join('') +
+    `<option value="${NEW_CATEGORY_OPTION}">+ Nova subcategoria…</option>`;
+}
+
+/* Cria uma categoria/subcategoria nova a partir do próprio menu da compra
+   (quando o usuário escolhe "+ Nova categoria…" / "+ Nova subcategoria…"). */
+function createCategoryInline(){
+  const name = prompt('Nome da nova categoria:');
+  if(!name || !name.trim()) return null;
+  const cat = {id:newId('cat'), name:name.trim(), subcategories:[]};
+  STATE.categoryDefs.push(cat);
+  saveState();
+  return cat.id;
+}
+function createSubcategoryInline(catId){
+  const cat = STATE.categoryDefs.find(c=>c.id===catId);
+  if(!cat) return '';
+  const name = prompt('Nome da nova subcategoria:');
+  if(!name || !name.trim()) return '';
+  const sub = {id:newId('sub'), name:name.trim()};
+  cat.subcategories.push(sub);
+  saveState();
+  return sub.id;
+}
+
+function renderCategoryFilterOptions(){
+  const sel = document.getElementById('tx-filter-category');
+  const current = TX_VIEW.categoryId;
+  sel.innerHTML = `<option value="">Todas as categorias</option>` +
+    STATE.categoryDefs.map(c => `<option value="${c.id}" ${c.id===current?'selected':''}>${escapeAttr(c.name)}</option>`).join('');
+}
+
+function getFilteredSortedTransactions(){
+  const txs = currentMonth().transactions;
+  let list = txs.slice();
+  if(TX_VIEW.search.trim()){
+    const q = TX_VIEW.search.trim().toUpperCase();
+    list = list.filter(tx => tx.description.toUpperCase().includes(q));
+  }
+  if(TX_VIEW.categoryId){
+    list = list.filter(tx => tx.categoryId === TX_VIEW.categoryId);
+  }
+  const catName = id => { const c = STATE.categoryDefs.find(x=>x.id===id); return c ? c.name : ''; };
+  switch(TX_VIEW.sort){
+    case 'date-asc': list.sort((a,b)=>a.date.localeCompare(b.date)); break;
+    case 'date-desc': list.sort((a,b)=>b.date.localeCompare(a.date)); break;
+    case 'value-asc': list.sort((a,b)=>a.value-b.value); break;
+    case 'value-desc': list.sort((a,b)=>b.value-a.value); break;
+    case 'category': list.sort((a,b)=>catName(a.categoryId).localeCompare(catName(b.categoryId))); break;
+    case 'description': list.sort((a,b)=>a.description.localeCompare(b.description)); break;
+  }
+  return list;
 }
 
 function renderTransactions(){
-  const txs = currentMonth().transactions;
-  document.getElementById('tx-sub').textContent = txs.length
-    ? `${txs.length} compra(s) · total ${BRL(sumBy(txs))}`
+  const all = currentMonth().transactions;
+  renderCategoryFilterOptions();
+  const list = getFilteredSortedTransactions();
+  const filtered = list.length !== all.length;
+  document.getElementById('tx-sub').textContent = all.length
+    ? (filtered
+        ? `Mostrando ${list.length} de ${all.length} compra(s) · total filtrado ${BRL(sumBy(list))}`
+        : `${all.length} compra(s) · total ${BRL(sumBy(all))}`)
     : 'Nenhuma compra ainda — importe a fatura acima ou adicione manualmente';
-  document.getElementById('transactions-body').innerHTML = txs.map(tx => `
+  document.getElementById('transactions-body').innerHTML = list.map(tx => `
     <tr data-id="${tx.id}">
       <td><input class="cell" data-field="date" data-list="transactions" data-id="${tx.id}" value="${escapeAttr(tx.date)}" placeholder="DD/MM" style="width:70px;"></td>
       <td><input class="cell" data-field="description" data-list="transactions" data-id="${tx.id}" value="${escapeAttr(tx.description)}"></td>
@@ -1213,6 +1314,14 @@ function renderTransactions(){
       <td class="center"><button class="row-del-btn" data-action="del" data-list="transactions" data-id="${tx.id}" title="Remover">✕</button></td>
     </tr>
   `).join('');
+  updateSortArrows();
+}
+
+function updateSortArrows(){
+  document.querySelectorAll('th.sortable .sort-arrow').forEach(el => el.remove());
+  const [key, dir] = TX_VIEW.sort.includes('-') ? TX_VIEW.sort.split('-') : [TX_VIEW.sort, 'asc'];
+  const th = document.querySelector(`th.sortable[data-sort-key="${key}"]`);
+  if(th) th.insertAdjacentHTML('beforeend', `<span class="sort-arrow">${dir==='desc'?'▼':'▲'}</span>`);
 }
 
 function renderTransactionsSoft(){
@@ -1415,8 +1524,15 @@ document.body.addEventListener('change', (e) => {
   if(t.dataset && t.dataset.field === 'categoryId' && t.dataset.list === 'transactions'){
     const item = findItem('transactions', t.dataset.id);
     if(item){
-      item.categoryId = t.value; item.subcategoryId = '';
+      let newCatId = t.value;
+      if(newCatId === NEW_CATEGORY_OPTION){
+        newCatId = createCategoryInline();
+        if(!newCatId){ t.value = item.categoryId; return; }
+        renderCategoryFilterOptions();
+      }
+      item.categoryId = newCatId; item.subcategoryId = '';
       saveState();
+      t.innerHTML = categoryOptionsHTML(item.categoryId);
       const row = t.closest('tr');
       const subSelect = row.querySelector('select[data-field="subcategoryId"]');
       if(subSelect) subSelect.innerHTML = subcategoryOptionsHTML(item.categoryId, '');
@@ -1425,13 +1541,26 @@ document.body.addEventListener('change', (e) => {
   }
   if(t.dataset && t.dataset.field === 'subcategoryId' && t.dataset.list === 'transactions'){
     const item = findItem('transactions', t.dataset.id);
-    if(item){ item.subcategoryId = t.value; saveState(); }
+    if(item){
+      let newSubId = t.value;
+      if(newSubId === NEW_CATEGORY_OPTION){
+        newSubId = createSubcategoryInline(item.categoryId);
+        t.innerHTML = subcategoryOptionsHTML(item.categoryId, newSubId);
+      }
+      item.subcategoryId = newSubId; saveState();
+    }
   }
 
   if(t.dataset && t.dataset.prevId && t.dataset.prevField === 'categoryId'){
     const p = IMPORT_PREVIEW.find(x=>x.id===t.dataset.prevId);
     if(p){
-      p.categoryId = t.value; p.subcategoryId = '';
+      let newCatId = t.value;
+      if(newCatId === NEW_CATEGORY_OPTION){
+        newCatId = createCategoryInline();
+        if(!newCatId){ t.value = p.categoryId; return; }
+      }
+      p.categoryId = newCatId; p.subcategoryId = '';
+      t.innerHTML = categoryOptionsHTML(p.categoryId);
       const row = t.closest('tr');
       const subSelect = row.querySelector('select[data-prev-field="subcategoryId"]');
       if(subSelect) subSelect.innerHTML = subcategoryOptionsHTML(p.categoryId, '');
@@ -1439,7 +1568,14 @@ document.body.addEventListener('change', (e) => {
   }
   if(t.dataset && t.dataset.prevId && t.dataset.prevField === 'subcategoryId'){
     const p = IMPORT_PREVIEW.find(x=>x.id===t.dataset.prevId);
-    if(p) p.subcategoryId = t.value;
+    if(p){
+      let newSubId = t.value;
+      if(newSubId === NEW_CATEGORY_OPTION){
+        newSubId = createSubcategoryInline(p.categoryId);
+        t.innerHTML = subcategoryOptionsHTML(p.categoryId, newSubId);
+      }
+      p.subcategoryId = newSubId;
+    }
   }
 });
 
