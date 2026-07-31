@@ -417,7 +417,7 @@ function parseInvoiceText(text){
   const sectionExpense = /^(Despesas|Parcelamentos)\s*$/i;
   const sectionCredit = /^(Pagamento e Demais Cr[ée]ditos)\s*$/i;
   const sectionIgnore = /^(Resumo da Fatura|Detalhamento da Fatura|Saldo total consolidado|Juros e Custo)/i;
-  const lineRe = /(\d{2}\/\d{2})\s+(.+?)\s+(?:\d{1,2}\/\d{1,2}\s+)?(-?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/;
+  const lineRe = /(\d{2}\/\d{2})\s+(.+?)\s+(?:(\d{1,2})\/(\d{1,2})\s+)?(-?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/;
   const skipWords = /(VALOR TOTAL|^SALDO|^TOTAL\b|ANUIDADE)/i;
 
   for(const raw of lines){
@@ -430,11 +430,14 @@ function parseInvoiceText(text){
     if(skipWords.test(line)) continue;
     const m = line.match(lineRe);
     if(!m) continue;
-    const value = parseFloat(m[3].replace(/\./g,'').replace(',', '.'));
+    const value = parseFloat(m[5].replace(/\./g,'').replace(',', '.'));
     if(!isFinite(value) || value===0 || value<0) continue;
     const description = m[2].trim().replace(/\s{2,}/g,' ');
     if(!description) continue;
-    results.push({ date: m[1], description, value });
+    const parcelaAtual = m[3] ? parseInt(m[3],10) : 1;
+    const qtdParcelas = m[4] ? parseInt(m[4],10) : 1;
+    const parcelado = qtdParcelas > 1;
+    results.push({ date: m[1], description, value, parcelado, qtdParcelas, parcelaAtual });
   }
   return results;
 }
@@ -498,6 +501,11 @@ function normalizeState(state){
   state.categoryDefs.forEach(c => { if(!c.subcategories) c.subcategories = []; });
   Object.values(state.months || {}).forEach(mo => {
     if(!mo.transactions) mo.transactions = [];
+    mo.transactions.forEach(tx => {
+      if(tx.parcelado === undefined) tx.parcelado = false;
+      if(!tx.qtdParcelas) tx.qtdParcelas = 1;
+      if(!tx.parcelaAtual) tx.parcelaAtual = 1;
+    });
   });
   return state;
 }
@@ -846,10 +854,15 @@ function monthTemplate(){
       <div id="import-preview-wrap" style="display:none; margin-top:18px;">
         <h3>Revise antes de importar</h3>
         <div class="card-sub" id="import-preview-sub"></div>
+        <div style="overflow-x:auto;">
         <table>
-          <thead><tr><th class="tx-checkbox-col"></th><th>Data</th><th>Descrição</th><th class="right">Valor</th><th>Categoria</th><th>Subcategoria</th></tr></thead>
+          <thead><tr>
+            <th class="tx-checkbox-col"></th><th>Data</th><th>Estabelecimento</th><th class="right">Valor (R$)</th>
+            <th>Classificação</th><th>Subcategoria</th><th class="center">Parcelado</th><th class="center">Qtd Parcelas</th><th class="center">Parcela Atual</th>
+          </tr></thead>
           <tbody id="import-preview-body"></tbody>
         </table>
+        </div>
         <div style="margin-top:10px; display:flex; gap:8px;">
           <button class="btn primary" id="confirm-import-btn">Adicionar compras selecionadas</button>
           <button class="btn ghost" id="cancel-import-btn">Cancelar</button>
@@ -858,10 +871,15 @@ function monthTemplate(){
 
       <h3 style="margin-top:22px;">Todas as compras deste mês</h3>
       <div class="card-sub" id="tx-sub">Nenhuma compra ainda</div>
+      <div style="overflow-x:auto;">
       <table>
-        <thead><tr><th>Data</th><th>Descrição</th><th class="right">Valor</th><th>Categoria</th><th>Subcategoria</th><th></th></tr></thead>
+        <thead><tr>
+          <th>Data</th><th>Estabelecimento</th><th class="right">Valor (R$)</th>
+          <th>Classificação</th><th>Subcategoria</th><th class="center">Parcelado</th><th class="center">Qtd Parcelas</th><th class="center">Parcela Atual</th><th></th>
+        </tr></thead>
         <tbody id="transactions-body"></tbody>
       </table>
+      </div>
       <button class="add-row-btn" id="add-transaction">+ Adicionar compra manualmente</button>
     </section>
 
@@ -959,7 +977,7 @@ function renderMonth(){
 
   document.getElementById('add-transaction').addEventListener('click', () => {
     const firstCat = STATE.categoryDefs[0];
-    currentMonth().transactions.push({id:newId('tx'), date:'', description:'Nova compra', value:0, categoryId: firstCat?firstCat.id:null, subcategoryId:''});
+    currentMonth().transactions.push({id:newId('tx'), date:'', description:'Nova compra', value:0, categoryId: firstCat?firstCat.id:null, subcategoryId:'', parcelado:false, qtdParcelas:1, parcelaAtual:1});
     saveState(); renderTransactions(); renderCategoryBars(); renderDonut();
   });
   document.getElementById('analyze-invoice-btn').addEventListener('click', analyzeInvoicePaste);
@@ -1189,6 +1207,9 @@ function renderTransactions(){
       <td><input class="cell num" data-field="value" data-list="transactions" data-id="${tx.id}" type="number" step="0.01" value="${tx.value}"></td>
       <td><select class="cell" data-field="categoryId" data-list="transactions" data-id="${tx.id}">${categoryOptionsHTML(tx.categoryId)}</select></td>
       <td><select class="cell" data-field="subcategoryId" data-list="transactions" data-id="${tx.id}">${subcategoryOptionsHTML(tx.categoryId, tx.subcategoryId)}</select></td>
+      <td class="center"><input type="checkbox" data-field="parcelado" data-list="transactions" data-id="${tx.id}" ${tx.parcelado?'checked':''}></td>
+      <td class="center"><input class="cell num" data-field="qtdParcelas" data-list="transactions" data-id="${tx.id}" type="number" min="1" step="1" value="${tx.qtdParcelas||1}" style="width:56px;"></td>
+      <td class="center"><input class="cell num" data-field="parcelaAtual" data-list="transactions" data-id="${tx.id}" type="number" min="1" step="1" value="${tx.parcelaAtual||1}" style="width:56px;"></td>
       <td class="center"><button class="row-del-btn" data-action="del" data-list="transactions" data-id="${tx.id}" title="Remover">✕</button></td>
     </tr>
   `).join('');
@@ -1219,6 +1240,9 @@ function analyzeInvoicePaste(){
     value: f.value,
     categoryId: guessCategoryId(f.description),
     subcategoryId: '',
+    parcelado: f.parcelado,
+    qtdParcelas: f.qtdParcelas,
+    parcelaAtual: f.parcelaAtual,
   }));
   renderImportPreview();
 }
@@ -1235,6 +1259,9 @@ function renderImportPreview(){
       <td><input class="cell num" data-prev-field="value" data-prev-id="${p.id}" type="number" step="0.01" value="${p.value}"></td>
       <td><select class="cell" data-prev-field="categoryId" data-prev-id="${p.id}">${categoryOptionsHTML(p.categoryId)}</select></td>
       <td><select class="cell" data-prev-field="subcategoryId" data-prev-id="${p.id}">${subcategoryOptionsHTML(p.categoryId, p.subcategoryId)}</select></td>
+      <td class="center"><input type="checkbox" data-prev-field="parcelado" data-prev-id="${p.id}" ${p.parcelado?'checked':''}></td>
+      <td class="center"><input class="cell num" data-prev-field="qtdParcelas" data-prev-id="${p.id}" type="number" min="1" step="1" value="${p.qtdParcelas}" style="width:56px;"></td>
+      <td class="center"><input class="cell num" data-prev-field="parcelaAtual" data-prev-id="${p.id}" type="number" min="1" step="1" value="${p.parcelaAtual}" style="width:56px;"></td>
     </tr>
   `).join('');
 }
@@ -1245,6 +1272,7 @@ function confirmImport(){
     currentMonth().transactions.push({
       id:newId('tx'), date:p.date, description:p.description, value:Number(p.value)||0,
       categoryId:p.categoryId, subcategoryId:p.subcategoryId||'',
+      parcelado:!!p.parcelado, qtdParcelas:Number(p.qtdParcelas)||1, parcelaAtual:Number(p.parcelaAtual)||1,
     });
   });
   IMPORT_PREVIEW = [];
