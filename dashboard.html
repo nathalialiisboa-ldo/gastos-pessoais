@@ -236,6 +236,41 @@
   .type-add-row{ display:flex; gap:8px; margin-bottom:18px; margin-left:16px; }
   .type-add-row input{ flex:1; }
 
+  /* Categorias / subcategorias / importação de fatura */
+  details.cat-manager{ margin-bottom:18px; }
+  details.cat-manager summary{ cursor:pointer; font-weight:600; font-size:13px; color:var(--accent); margin-left:16px; list-style:none; }
+  details.cat-manager summary::-webkit-details-marker{ display:none; }
+  details.cat-manager summary::before{ content:'▸ '; }
+  details.cat-manager[open] summary::before{ content:'▾ '; }
+  .cat-manager-body{ margin:12px 0 0 16px; padding:14px; background:var(--page); border-radius:12px; }
+  .cat-group{ margin-bottom:14px; }
+  .cat-group-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .cat-group-head input{ font-weight:700; font-size:13px; background:transparent; border:1px solid transparent; border-radius:7px; padding:4px 6px; color:var(--text-primary); flex:1; }
+  .cat-group-head input:hover{ border-color:var(--border); }
+  .cat-group-head input:focus{ outline:none; border-color:var(--accent); background:var(--surface-1); }
+  .subcat-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-left:18px; }
+  .subcat-chip{ display:flex; align-items:center; gap:2px; background:var(--surface-1); border:1px solid var(--border); border-radius:999px; padding:2px 3px 2px 10px; font-size:12px; }
+  .subcat-chip input{ background:transparent; border:none; color:var(--text-secondary); font-size:12px; width:auto; min-width:30px; padding:3px 2px; }
+  .subcat-chip input:focus{ outline:none; }
+  .subcat-add{ display:flex; align-items:center; gap:6px; margin-left:18px; margin-top:6px; }
+  .subcat-add input{ font-size:12px; padding:4px 8px; border:1px solid var(--border); border-radius:999px; background:var(--surface-1); color:var(--text-primary); width:150px; }
+  .subcat-add button{ font-size:11px; padding:3px 10px; background:transparent; border:1px dashed var(--border); border-radius:999px; color:var(--text-secondary); cursor:pointer; }
+  .subcat-add button:hover{ color:var(--accent); border-color:var(--accent); }
+  .new-cat-row{ display:flex; gap:8px; margin-left:16px; margin-top:4px; }
+  .new-cat-row input{ flex:1; }
+
+  textarea.invoice-paste{
+    width:100%; min-height:110px; resize:vertical; font-family:inherit; font-size:13px;
+    background:var(--surface-2); color:var(--text-primary); border:1px solid var(--border);
+    border-radius:10px; padding:10px 12px;
+  }
+  textarea.invoice-paste:focus{ outline:none; border-color:var(--accent); }
+  .cat-bar-ro{ margin-bottom:13px; }
+  .cat-bar-ro-top{ display:flex; justify-content:space-between; font-size:13px; margin-bottom:5px; }
+  .cat-bar-ro-top .n{ color:var(--text-primary); font-weight:500; }
+  .cat-bar-ro-top .v{ color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+  .tx-checkbox-col{ width:26px; }
+
   .month-label-row{ display:flex; align-items:center; gap:10px; margin-bottom:18px; }
   .month-label-row input{ font-weight:700; font-size:19px; background:transparent; border:1px solid transparent; border-radius:8px; padding:4px 8px; color:var(--text-primary); flex:1; }
   .month-label-row input:hover{ border-color:var(--border); }
@@ -331,6 +366,79 @@ function defaultTypes(){
   ];
 }
 
+function defaultCategoryDefs(){
+  const mk = (name, subs) => ({ id:newId('cat'), name, subcategories: subs.map(s => ({id:newId('sub'), name:s})) });
+  return [
+    mk("Mercado/Alimentação",  ["Supermercado","Restaurante","Delivery"]),
+    mk("Carro/Transporte",     ["Combustível","Estacionamento","App de transporte"]),
+    mk("Assinaturas",          ["Streaming","Aplicativos"]),
+    mk("Pets",                 []),
+    mk("Cuidados pessoais",    ["Beleza","Saúde"]),
+    mk("Compras online",       []),
+    mk("Vestuário",            []),
+    mk("Limpeza/Lavanderia",   []),
+    mk("Farmácia/Suplementos", []),
+    mk("Outros",               []),
+  ];
+}
+
+/* Palavras-chave para sugerir a categoria automaticamente ao importar a fatura.
+   É só um ponto de partida — você pode corrigir cada compra na revisão. */
+const CATEGORY_KEYWORDS = [
+  {cat:"Carro/Transporte",     words:["UBER","POSTO","SHELLBOX","VALET","ESTACIONA","PARKING","99APP","IRACI"]},
+  {cat:"Assinaturas",          words:["NETFLIX","APPLE","SPOTIFY","TOTALPASS","CHATGPT","GLOBOPLAY","GOOGLE","VIVO","CLARO","PRIME","DISNEY","HBO"]},
+  {cat:"Farmácia/Suplementos", words:["DROGASIL","DROGARIA","FARMA","PACHECO","HOSPPOP"]},
+  {cat:"Compras online",       words:["SHOPEE","SHEIN","MERCADOLIVRE","TIKTOK","ALIEXPRESS","AMAZON"]},
+  {cat:"Mercado/Alimentação",  words:["CARREFOUR","PADARIA","RESTAURANTE","MERCADO","SUPERMERCADO","IFOOD","CAFE","HAMBURGUER","PIZZ","LANCHE"," BAR ","CONVENIENCIA"]},
+  {cat:"Pets",                 words:["PETZ","VIPET","COBASI","VET","PET "]},
+  {cat:"Cuidados pessoais",    words:["GOYA","OBOTICARIO","BOTICARIO","PERFUMARIA","STUDIO","ESTETICA","SALAO","BARBEARIA"]},
+  {cat:"Vestuário",            words:["RENNER","C&A","CEA ","SHOPPING","LOJA"]},
+  {cat:"Limpeza/Lavanderia",   words:["LAVANDERIA","CLEAN"]},
+];
+function guessCategoryId(description){
+  const upper = ' ' + description.toUpperCase() + ' ';
+  for(const entry of CATEGORY_KEYWORDS){
+    if(entry.words.some(w => upper.includes(w))){
+      const cat = STATE.categoryDefs.find(c => c.name === entry.cat);
+      if(cat) return cat.id;
+    }
+  }
+  const outros = STATE.categoryDefs.find(c=>c.name==='Outros');
+  return outros ? outros.id : (STATE.categoryDefs[0] ? STATE.categoryDefs[0].id : null);
+}
+
+/* Lê o texto colado da fatura e devolve uma lista de {date, description, value}.
+   Reconhece o padrão comum de faturas de cartão: "DD/MM DESCRIÇÃO ... VALOR",
+   dentro das seções de despesas/parcelamentos (ignora pagamentos e resumos). */
+function parseInvoiceText(text){
+  const lines = text.split(/\r?\n/);
+  let mode = 'ignore';
+  const results = [];
+  const sectionExpense = /^(Despesas|Parcelamentos)\s*$/i;
+  const sectionCredit = /^(Pagamento e Demais Cr[ée]ditos)\s*$/i;
+  const sectionIgnore = /^(Resumo da Fatura|Detalhamento da Fatura|Saldo total consolidado|Juros e Custo)/i;
+  const lineRe = /(\d{2}\/\d{2})\s+(.+?)\s+(?:\d{1,2}\/\d{1,2}\s+)?(-?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/;
+  const skipWords = /(VALOR TOTAL|^SALDO|^TOTAL\b|ANUIDADE)/i;
+
+  for(const raw of lines){
+    const line = raw.trim();
+    if(!line) continue;
+    if(sectionExpense.test(line)){ mode='expense'; continue; }
+    if(sectionCredit.test(line)){ mode='credit'; continue; }
+    if(sectionIgnore.test(line)){ mode='ignore'; continue; }
+    if(mode!=='expense') continue;
+    if(skipWords.test(line)) continue;
+    const m = line.match(lineRe);
+    if(!m) continue;
+    const value = parseFloat(m[3].replace(/\./g,'').replace(',', '.'));
+    if(!isFinite(value) || value===0 || value<0) continue;
+    const description = m[2].trim().replace(/\s{2,}/g,' ');
+    if(!description) continue;
+    results.push({ date: m[1], description, value });
+  }
+  return results;
+}
+
 function defaultMonth(){
   return {
     label: "Julho / 2026",
@@ -367,6 +475,7 @@ function defaultMonth(){
       {id:newId('c'), name:"Vestuário",            value:105.29},
       {id:newId('c'), name:"Farmácia/Suplementos", value:70.08},
     ],
+    transactions: [],
   };
 }
 
@@ -375,10 +484,22 @@ function defaultState(){
   return {
     version: 2,
     types: defaultTypes(),
+    categoryDefs: defaultCategoryDefs(),
     monthOrder: [monthKey],
     months: { [monthKey]: defaultMonth() },
     activeTab: monthKey,
   };
+}
+
+/* Preenche campos que podem não existir em dados salvos por uma versão anterior
+   do dashboard (sem apagar nada que o usuário já editou). */
+function normalizeState(state){
+  if(!state.categoryDefs || !state.categoryDefs.length) state.categoryDefs = defaultCategoryDefs();
+  state.categoryDefs.forEach(c => { if(!c.subcategories) c.subcategories = []; });
+  Object.values(state.months || {}).forEach(mo => {
+    if(!mo.transactions) mo.transactions = [];
+  });
+  return state;
 }
 
 /* ======================= ESTADO / PERSISTÊNCIA ======================= */
@@ -392,6 +513,7 @@ function migrateFromV1(old){
   return {
     version: 2,
     types: defaultTypes(),
+    categoryDefs: defaultCategoryDefs(),
     monthOrder: [monthKey],
     months: {
       [monthKey]: {
@@ -400,6 +522,7 @@ function migrateFromV1(old){
         bills: (old.bills || []).map(b => ({ ...b, typeId: typeMap[b.type] || "t-fixo" })),
         subscriptions: old.subscriptions || [],
         categories: old.categories || [],
+        transactions: [],
       }
     },
     activeTab: monthKey,
@@ -409,9 +532,9 @@ function migrateFromV1(old){
 function loadState(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw) return JSON.parse(raw);
+    if(raw) return normalizeState(JSON.parse(raw));
     const oldRaw = localStorage.getItem(OLD_STORAGE_KEY);
-    if(oldRaw) return migrateFromV1(JSON.parse(oldRaw));
+    if(oldRaw) return normalizeState(migrateFromV1(JSON.parse(oldRaw)));
   }catch(e){ console.warn("Não foi possível ler dados salvos, usando padrão.", e); }
   return defaultState();
 }
@@ -491,6 +614,7 @@ function renderTabbar(){
       bills: prev.bills.map(b => ({...b, id:newId('b'), paid:false, dueDate:''})),
       subscriptions: prev.subscriptions.map(s => ({...s, id:newId('s')})),
       categories: prev.categories.map(c => ({...c, id:newId('c'), value:0})),
+      transactions: [],
     };
     STATE.monthOrder.push(key);
     STATE.activeTab = key;
@@ -699,6 +823,48 @@ function monthTemplate(){
       </div>
     </section>
 
+    <section class="card" style="margin-bottom:12px;">
+      <h2 class="dot-gold">Compras do cartão</h2>
+      <div class="card-sub">Importe a fatura e classifique cada compra por categoria e subcategoria</div>
+
+      <details class="cat-manager" id="cat-manager-details">
+        <summary>Gerenciar categorias e subcategorias</summary>
+        <div class="cat-manager-body" id="category-manager"></div>
+      </details>
+
+      <h3>Importar fatura</h3>
+      <div class="card-sub">
+        Abra o PDF da fatura no seu computador ou celular, selecione todo o texto (Ctrl+A ou "Selecionar tudo") e copie (Ctrl+C).
+        Cole aqui embaixo e clique em "Analisar fatura". Nada é importado sem você revisar antes.
+      </div>
+      <textarea class="invoice-paste" id="invoice-paste" placeholder="Cole aqui o texto copiado da fatura..."></textarea>
+      <div style="margin-top:10px; display:flex; align-items:center; gap:10px;">
+        <button class="btn primary" id="analyze-invoice-btn">Analisar fatura</button>
+        <span id="analyze-status" style="font-size:12px; color:var(--text-secondary);"></span>
+      </div>
+
+      <div id="import-preview-wrap" style="display:none; margin-top:18px;">
+        <h3>Revise antes de importar</h3>
+        <div class="card-sub" id="import-preview-sub"></div>
+        <table>
+          <thead><tr><th class="tx-checkbox-col"></th><th>Data</th><th>Descrição</th><th class="right">Valor</th><th>Categoria</th><th>Subcategoria</th></tr></thead>
+          <tbody id="import-preview-body"></tbody>
+        </table>
+        <div style="margin-top:10px; display:flex; gap:8px;">
+          <button class="btn primary" id="confirm-import-btn">Adicionar compras selecionadas</button>
+          <button class="btn ghost" id="cancel-import-btn">Cancelar</button>
+        </div>
+      </div>
+
+      <h3 style="margin-top:22px;">Todas as compras deste mês</h3>
+      <div class="card-sub" id="tx-sub">Nenhuma compra ainda</div>
+      <table>
+        <thead><tr><th>Data</th><th>Descrição</th><th class="right">Valor</th><th>Categoria</th><th>Subcategoria</th><th></th></tr></thead>
+        <tbody id="transactions-body"></tbody>
+      </table>
+      <button class="add-row-btn" id="add-transaction">+ Adicionar compra manualmente</button>
+    </section>
+
     <section class="tables-row">
       <div class="card">
         <div class="card-head">
@@ -750,6 +916,8 @@ function renderMonth(){
   renderDonut();
   renderCategoryBars();
   renderTypeChips();
+  renderCategoryManager();
+  renderTransactions();
   renderBills();
   renderIncome();
   renderSubs();
@@ -788,6 +956,18 @@ function renderMonth(){
   });
   document.getElementById('add-type-btn').addEventListener('click', addTypeFromInput);
   document.getElementById('new-type-input').addEventListener('keydown', (e) => { if(e.key==='Enter'){ e.preventDefault(); addTypeFromInput(); } });
+
+  document.getElementById('add-transaction').addEventListener('click', () => {
+    const firstCat = STATE.categoryDefs[0];
+    currentMonth().transactions.push({id:newId('tx'), date:'', description:'Nova compra', value:0, categoryId: firstCat?firstCat.id:null, subcategoryId:''});
+    saveState(); renderTransactions(); renderCategoryBars(); renderDonut();
+  });
+  document.getElementById('analyze-invoice-btn').addEventListener('click', analyzeInvoicePaste);
+  document.getElementById('cancel-import-btn').addEventListener('click', () => {
+    IMPORT_PREVIEW = [];
+    document.getElementById('import-preview-wrap').style.display = 'none';
+  });
+  document.getElementById('confirm-import-btn').addEventListener('click', confirmImport);
 }
 
 function addTypeFromInput(){
@@ -864,35 +1044,215 @@ function renderDonut(){
     </div>`;
 }
 
+function computeCategoryTotals(month){
+  if(month.transactions && month.transactions.length>0){
+    const totals = {};
+    month.transactions.forEach(tx => {
+      const cat = STATE.categoryDefs.find(c=>c.id===tx.categoryId);
+      const name = cat ? cat.name : 'Sem categoria';
+      const key = tx.categoryId || 'none';
+      if(!totals[key]) totals[key] = {name, value:0};
+      totals[key].value += Number(tx.value)||0;
+    });
+    return Object.values(totals).sort((a,b)=>b.value-a.value);
+  }
+  return month.categories.map(c=>({id:c.id, name:c.name, value:Number(c.value)||0}));
+}
+
 function renderCategoryBars(){
-  const cats = currentMonth().categories;
-  const total = sumBy(cats) || 1;
-  const max = Math.max(1, ...cats.map(c=>Number(c.value)||0));
-  document.getElementById('cat-sub').textContent = `Total: ${BRL(total)} em ${cats.length} categorias`;
-  document.getElementById('cat-bars').innerHTML = cats.map((c,i) => `
+  const month = currentMonth();
+  const usingTx = month.transactions && month.transactions.length>0;
+  const cats = computeCategoryTotals(month);
+  const total = cats.reduce((a,b)=>a+b.value,0) || 1;
+  const max = Math.max(1, ...cats.map(c=>c.value));
+  document.getElementById('cat-sub').textContent = usingTx
+    ? `Calculado a partir de ${month.transactions.length} compra(s) em "Compras do cartão" — edite a categoria de cada compra lá embaixo`
+    : `Total: ${BRL(total)} em ${cats.length} categorias`;
+  const addBtn = document.getElementById('add-cat');
+  if(addBtn) addBtn.style.display = usingTx ? 'none' : '';
+
+  document.getElementById('cat-bars').innerHTML = usingTx ? cats.map((c,i) => `
+    <div class="cat-bar-ro">
+      <div class="cat-bar-ro-top"><span class="n">${escapeAttr(c.name)}</span><span class="v">${BRL(c.value)} · ${((c.value/total)*100).toFixed(0)}%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(c.value/max*100).toFixed(1)}%; background:var(${seriesColors[i % seriesColors.length]})"></div></div>
+    </div>
+  `).join('') : cats.map((c,i) => `
     <div class="bar-row" data-id="${c.id}">
       <input class="cell row-name-input" data-field="name" data-list="categories" data-id="${c.id}" value="${escapeAttr(c.name)}">
       <input class="cell num row-value-input" data-field="value" data-list="categories" data-id="${c.id}" type="number" step="0.01" value="${c.value}">
       <button class="row-del-btn row-del" data-action="del" data-list="categories" data-id="${c.id}" title="Remover">✕</button>
-      <div class="bar-track"><div class="bar-fill" style="width:${((Number(c.value)||0)/max*100).toFixed(1)}%; background:var(${seriesColors[i % seriesColors.length]})"></div></div>
-      <div class="bar-pct">${(((Number(c.value)||0)/total)*100).toFixed(0)}%</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(c.value/max*100).toFixed(1)}%; background:var(${seriesColors[i % seriesColors.length]})"></div></div>
+      <div class="bar-pct">${((c.value/total)*100).toFixed(0)}%</div>
     </div>
   `).join('');
 }
 
 function renderCategoryBarsSoft(){
-  const cats = currentMonth().categories;
+  const month = currentMonth();
+  if(month.transactions && month.transactions.length>0){ renderCategoryBars(); return; }
+  const cats = month.categories;
   const total = sumBy(cats) || 1;
   const max = Math.max(1, ...cats.map(c=>Number(c.value)||0));
   document.getElementById('cat-sub').textContent = `Total: ${BRL(total)} em ${cats.length} categorias`;
   document.querySelectorAll('#cat-bars .bar-row[data-id]').forEach(row => {
-    const c = currentMonth().categories.find(x=>x.id===row.dataset.id);
+    const c = month.categories.find(x=>x.id===row.dataset.id);
     if(!c) return;
     const fill = row.querySelector('.bar-fill');
     const pct = row.querySelector('.bar-pct');
     if(fill) fill.style.width = `${((Number(c.value)||0)/max*100).toFixed(1)}%`;
     if(pct) pct.textContent = `${(((Number(c.value)||0)/total)*100).toFixed(0)}%`;
   });
+}
+
+/* ======================= CATEGORIAS / SUBCATEGORIAS ======================= */
+function renderCategoryManager(){
+  document.getElementById('category-manager').innerHTML = STATE.categoryDefs.map(cat => `
+    <div class="cat-group" data-cat-id="${cat.id}">
+      <div class="cat-group-head">
+        <input data-cat-name-id="${cat.id}" value="${escapeAttr(cat.name)}">
+        <button class="row-del-btn" data-action="del-category" data-cat-id="${cat.id}" title="Remover categoria">✕</button>
+      </div>
+      <div class="subcat-chips">
+        ${cat.subcategories.map(s => `
+          <span class="subcat-chip">
+            <input data-subcat-id="${s.id}" data-cat-id="${cat.id}" value="${escapeAttr(s.name)}" style="width:${Math.max(3,s.name.length)}ch;">
+            <button class="row-del-btn" data-action="del-subcategory" data-cat-id="${cat.id}" data-subcat-id="${s.id}" title="Remover subcategoria">✕</button>
+          </span>
+        `).join('')}
+      </div>
+      <div class="subcat-add">
+        <input type="text" placeholder="Nova subcategoria…" data-new-subcat-for="${cat.id}">
+        <button data-action="add-subcategory" data-cat-id="${cat.id}">+ Adicionar</button>
+      </div>
+    </div>
+  `).join('') + `
+    <div class="new-cat-row">
+      <input class="cell" id="new-category-input" placeholder="Nome da nova categoria…" style="border:1px solid var(--border);">
+      <button class="btn ghost" id="add-category-btn">+ Criar categoria</button>
+    </div>
+  `;
+
+  document.querySelectorAll('[data-cat-name-id]').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const cat = STATE.categoryDefs.find(c=>c.id===e.target.dataset.catNameId);
+      if(cat){ cat.name = e.target.value; saveState(); renderTransactions(); renderCategoryBars(); }
+    });
+  });
+  document.querySelectorAll('[data-subcat-id]').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const cat = STATE.categoryDefs.find(c=>c.id===e.target.dataset.catId);
+      const sub = cat && cat.subcategories.find(s=>s.id===e.target.dataset.subcatId);
+      if(sub){ sub.name = e.target.value; e.target.style.width = Math.max(3, e.target.value.length) + 'ch'; saveState(); renderTransactionsSoft(); }
+    });
+  });
+  document.querySelectorAll('[data-action="add-subcategory"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = document.querySelector(`[data-new-subcat-for="${btn.dataset.catId}"]`);
+      const name = input.value.trim();
+      if(!name) return;
+      const cat = STATE.categoryDefs.find(c=>c.id===btn.dataset.catId);
+      cat.subcategories.push({id:newId('sub'), name});
+      saveState(); renderCategoryManager(); renderTransactions();
+    });
+  });
+  document.getElementById('add-category-btn').addEventListener('click', () => {
+    const input = document.getElementById('new-category-input');
+    const name = input.value.trim();
+    if(!name) return;
+    STATE.categoryDefs.push({id:newId('cat'), name, subcategories:[]});
+    saveState(); renderCategoryManager(); renderTransactions();
+  });
+}
+
+/* ======================= COMPRAS / TRANSAÇÕES DO CARTÃO ======================= */
+let IMPORT_PREVIEW = [];
+
+function categoryOptionsHTML(selectedId){
+  return STATE.categoryDefs.map(c => `<option value="${c.id}" ${c.id===selectedId?'selected':''}>${escapeAttr(c.name)}</option>`).join('');
+}
+function subcategoryOptionsHTML(catId, selectedId){
+  const cat = STATE.categoryDefs.find(c=>c.id===catId);
+  const subs = cat ? cat.subcategories : [];
+  return `<option value="" ${!selectedId?'selected':''}>—</option>` +
+    subs.map(s => `<option value="${s.id}" ${s.id===selectedId?'selected':''}>${escapeAttr(s.name)}</option>`).join('');
+}
+
+function renderTransactions(){
+  const txs = currentMonth().transactions;
+  document.getElementById('tx-sub').textContent = txs.length
+    ? `${txs.length} compra(s) · total ${BRL(sumBy(txs))}`
+    : 'Nenhuma compra ainda — importe a fatura acima ou adicione manualmente';
+  document.getElementById('transactions-body').innerHTML = txs.map(tx => `
+    <tr data-id="${tx.id}">
+      <td><input class="cell" data-field="date" data-list="transactions" data-id="${tx.id}" value="${escapeAttr(tx.date)}" placeholder="DD/MM" style="width:70px;"></td>
+      <td><input class="cell" data-field="description" data-list="transactions" data-id="${tx.id}" value="${escapeAttr(tx.description)}"></td>
+      <td><input class="cell num" data-field="value" data-list="transactions" data-id="${tx.id}" type="number" step="0.01" value="${tx.value}"></td>
+      <td><select class="cell" data-field="categoryId" data-list="transactions" data-id="${tx.id}">${categoryOptionsHTML(tx.categoryId)}</select></td>
+      <td><select class="cell" data-field="subcategoryId" data-list="transactions" data-id="${tx.id}">${subcategoryOptionsHTML(tx.categoryId, tx.subcategoryId)}</select></td>
+      <td class="center"><button class="row-del-btn" data-action="del" data-list="transactions" data-id="${tx.id}" title="Remover">✕</button></td>
+    </tr>
+  `).join('');
+}
+
+function renderTransactionsSoft(){
+  const txs = currentMonth().transactions;
+  document.getElementById('tx-sub').textContent = txs.length
+    ? `${txs.length} compra(s) · total ${BRL(sumBy(txs))}`
+    : 'Nenhuma compra ainda — importe a fatura acima ou adicione manualmente';
+}
+
+function analyzeInvoicePaste(){
+  const text = document.getElementById('invoice-paste').value;
+  const status = document.getElementById('analyze-status');
+  const found = parseInvoiceText(text);
+  if(found.length === 0){
+    status.textContent = 'Não encontrei nenhuma compra nesse texto — confira se colou o conteúdo da fatura corretamente.';
+    document.getElementById('import-preview-wrap').style.display = 'none';
+    return;
+  }
+  status.textContent = `${found.length} compra(s) encontrada(s) — revise embaixo antes de confirmar.`;
+  IMPORT_PREVIEW = found.map(f => ({
+    id: newId('prev'),
+    include: true,
+    date: f.date,
+    description: f.description,
+    value: f.value,
+    categoryId: guessCategoryId(f.description),
+    subcategoryId: '',
+  }));
+  renderImportPreview();
+}
+
+function renderImportPreview(){
+  const wrap = document.getElementById('import-preview-wrap');
+  wrap.style.display = IMPORT_PREVIEW.length ? '' : 'none';
+  document.getElementById('import-preview-sub').textContent = `${IMPORT_PREVIEW.length} compra(s) detectada(s) — desmarque o que não for compra, ajuste categoria/subcategoria e confirme.`;
+  document.getElementById('import-preview-body').innerHTML = IMPORT_PREVIEW.map(p => `
+    <tr data-id="${p.id}">
+      <td class="center"><input type="checkbox" data-prev-field="include" data-prev-id="${p.id}" ${p.include?'checked':''}></td>
+      <td><input class="cell" data-prev-field="date" data-prev-id="${p.id}" value="${escapeAttr(p.date)}" style="width:60px;"></td>
+      <td><input class="cell" data-prev-field="description" data-prev-id="${p.id}" value="${escapeAttr(p.description)}"></td>
+      <td><input class="cell num" data-prev-field="value" data-prev-id="${p.id}" type="number" step="0.01" value="${p.value}"></td>
+      <td><select class="cell" data-prev-field="categoryId" data-prev-id="${p.id}">${categoryOptionsHTML(p.categoryId)}</select></td>
+      <td><select class="cell" data-prev-field="subcategoryId" data-prev-id="${p.id}">${subcategoryOptionsHTML(p.categoryId, p.subcategoryId)}</select></td>
+    </tr>
+  `).join('');
+}
+
+function confirmImport(){
+  const toAdd = IMPORT_PREVIEW.filter(p => p.include);
+  toAdd.forEach(p => {
+    currentMonth().transactions.push({
+      id:newId('tx'), date:p.date, description:p.description, value:Number(p.value)||0,
+      categoryId:p.categoryId, subcategoryId:p.subcategoryId||'',
+    });
+  });
+  IMPORT_PREVIEW = [];
+  document.getElementById('invoice-paste').value = '';
+  document.getElementById('analyze-status').textContent = toAdd.length ? `${toAdd.length} compra(s) importada(s) com sucesso.` : '';
+  document.getElementById('import-preview-wrap').style.display = 'none';
+  saveState();
+  renderTransactions(); renderCategoryBars(); renderDonut();
 }
 
 function renderTypeChips(){
@@ -989,6 +1349,17 @@ function findItem(list, id){ return currentMonth()[list].find(x => x.id === id);
 
 document.body.addEventListener('input', (e) => {
   const t = e.target;
+
+  if(t.dataset && t.dataset.prevId){
+    const p = IMPORT_PREVIEW.find(x=>x.id===t.dataset.prevId);
+    if(!p) return;
+    const field = t.dataset.prevField;
+    if(t.type === 'number'){ p[field] = t.value === '' ? 0 : parseFloat(t.value); }
+    else if(t.type === 'checkbox'){ p[field] = t.checked; }
+    else { p[field] = t.value; }
+    return;
+  }
+
   if(!t.dataset || !t.dataset.list || !t.dataset.field) return;
   const item = findItem(t.dataset.list, t.dataset.id);
   if(!item) return;
@@ -1002,6 +1373,7 @@ document.body.addEventListener('input', (e) => {
   else if(t.dataset.list === 'bills'){ renderKPIs(); renderDonut(); renderBillsSoft(); }
   else if(t.dataset.list === 'income'){ renderKPIs(); }
   else if(t.dataset.list === 'subscriptions'){ renderSubsSoft(); }
+  else if(t.dataset.list === 'transactions'){ renderTransactionsSoft(); renderCategoryBars(); }
 });
 
 document.body.addEventListener('change', (e) => {
@@ -1011,6 +1383,36 @@ document.body.addEventListener('change', (e) => {
     if(item){ item.typeId = t.value; saveState(); renderDonut(); }
   }
   if(t.dataset && t.dataset.field === 'dueDate'){ renderBillsSoft(); }
+
+  if(t.dataset && t.dataset.field === 'categoryId' && t.dataset.list === 'transactions'){
+    const item = findItem('transactions', t.dataset.id);
+    if(item){
+      item.categoryId = t.value; item.subcategoryId = '';
+      saveState();
+      const row = t.closest('tr');
+      const subSelect = row.querySelector('select[data-field="subcategoryId"]');
+      if(subSelect) subSelect.innerHTML = subcategoryOptionsHTML(item.categoryId, '');
+      renderCategoryBars();
+    }
+  }
+  if(t.dataset && t.dataset.field === 'subcategoryId' && t.dataset.list === 'transactions'){
+    const item = findItem('transactions', t.dataset.id);
+    if(item){ item.subcategoryId = t.value; saveState(); }
+  }
+
+  if(t.dataset && t.dataset.prevId && t.dataset.prevField === 'categoryId'){
+    const p = IMPORT_PREVIEW.find(x=>x.id===t.dataset.prevId);
+    if(p){
+      p.categoryId = t.value; p.subcategoryId = '';
+      const row = t.closest('tr');
+      const subSelect = row.querySelector('select[data-prev-field="subcategoryId"]');
+      if(subSelect) subSelect.innerHTML = subcategoryOptionsHTML(p.categoryId, '');
+    }
+  }
+  if(t.dataset && t.dataset.prevId && t.dataset.prevField === 'subcategoryId'){
+    const p = IMPORT_PREVIEW.find(x=>x.id===t.dataset.prevId);
+    if(p) p.subcategoryId = t.value;
+  }
 });
 
 document.body.addEventListener('click', (e) => {
@@ -1031,6 +1433,28 @@ document.body.addEventListener('click', (e) => {
     Object.values(STATE.months).forEach(mo => mo.bills.forEach(b => { if(b.typeId===id) b.typeId = fallback; }));
     STATE.types = STATE.types.filter(x=>x.id!==id);
     saveState(); renderAll();
+    return;
+  }
+  const delCategory = e.target.closest('[data-action="del-category"]');
+  if(delCategory){
+    if(STATE.categoryDefs.length <= 1){ alert('É preciso manter ao menos uma categoria.'); return; }
+    const id = delCategory.dataset.catId;
+    const usedCount = Object.values(STATE.months).reduce((acc,mo)=>acc + mo.transactions.filter(t=>t.categoryId===id).length, 0);
+    const fallback = STATE.categoryDefs.find(x=>x.id!==id);
+    if(usedCount>0 && !confirm(`Essa categoria está sendo usada em ${usedCount} compra(s). Elas serão movidas para "${fallback.name}". Continuar?`)) return;
+    Object.values(STATE.months).forEach(mo => mo.transactions.forEach(t => { if(t.categoryId===id){ t.categoryId = fallback.id; t.subcategoryId=''; } }));
+    STATE.categoryDefs = STATE.categoryDefs.filter(x=>x.id!==id);
+    saveState(); renderAll();
+    return;
+  }
+  const delSubcategory = e.target.closest('[data-action="del-subcategory"]');
+  if(delSubcategory){
+    const cat = STATE.categoryDefs.find(c=>c.id===delSubcategory.dataset.catId);
+    if(!cat) return;
+    const id = delSubcategory.dataset.subcatId;
+    Object.values(STATE.months).forEach(mo => mo.transactions.forEach(t => { if(t.subcategoryId===id) t.subcategoryId=''; }));
+    cat.subcategories = cat.subcategories.filter(s=>s.id!==id);
+    saveState(); renderCategoryManager(); renderTransactions();
   }
 });
 
@@ -1062,7 +1486,7 @@ document.getElementById('import-input').addEventListener('change', (e) => {
     try{
       const parsed = JSON.parse(reader.result);
       if(!parsed.months || !parsed.monthOrder || !parsed.types) throw new Error('formato inválido');
-      STATE = parsed;
+      STATE = normalizeState(parsed);
       if(!STATE.months[STATE.activeTab]) STATE.activeTab = 'overview';
       saveState(); renderAll();
       alert('Backup importado com sucesso!');
