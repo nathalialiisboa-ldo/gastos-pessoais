@@ -270,6 +270,12 @@
   .cat-bar-ro-top .n{ color:var(--text-primary); font-weight:500; }
   .cat-bar-ro-top .v{ color:var(--text-secondary); font-variant-numeric:tabular-nums; }
   .tx-checkbox-col{ width:26px; }
+  .modal-overlay{ position:fixed; inset:0; background:rgba(20,16,31,0.45); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px; }
+  .modal-box{ background:var(--surface-1); border:1px solid var(--border); border-radius:14px; padding:22px 24px; max-width:380px; width:100%; box-shadow:0 12px 40px rgba(0,0,0,.28); }
+  .modal-message{ font-size:14px; color:var(--text-primary); white-space:pre-line; line-height:1.5; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+  #modal-input{ width:100%; padding:9px 11px; font-size:13px; border-radius:8px; margin-top:12px; }
+
   .tx-toolbar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0 14px; }
   .tx-toolbar select, .tx-toolbar input{ background:var(--surface-1); border-radius:8px; padding:7px 10px; font-size:12.5px; color:var(--text-primary); }
   th.sortable{ cursor:pointer; user-select:none; }
@@ -333,7 +339,63 @@
 </div>
 </div>
 
+<div class="modal-overlay" id="modal-overlay" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-message" id="modal-message"></div>
+    <input type="text" id="modal-input" class="cell" style="display:none; border:1px solid var(--border); margin-top:10px;">
+    <div class="modal-actions">
+      <button class="btn ghost" id="modal-cancel">Cancelar</button>
+      <button class="btn primary" id="modal-ok">OK</button>
+    </div>
+  </div>
+</div>
+
 <script>
+/* =========================================================================
+   CAIXAS DE DIÁLOGO PRÓPRIAS (substituem prompt/confirm/alert do navegador)
+   O link de visualização roda dentro de um quadro restrito que bloqueia as
+   caixinhas nativas do navegador sem avisar — o botão parecia "não fazer
+   nada". Estas versões são desenhadas dentro da própria página e funcionam
+   em qualquer lugar (link de visualização ou arquivo baixado).
+   ========================================================================= */
+function openModal({message, defaultValue='', showInput=false, showCancel=true, okLabel='OK', cancelLabel='Cancelar'}){
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('modal-overlay');
+    const msgEl = document.getElementById('modal-message');
+    const inputEl = document.getElementById('modal-input');
+    const okBtn = document.getElementById('modal-ok');
+    const cancelBtn = document.getElementById('modal-cancel');
+
+    msgEl.textContent = message;
+    inputEl.style.display = showInput ? '' : 'none';
+    inputEl.value = defaultValue || '';
+    cancelBtn.style.display = showCancel ? '' : 'none';
+    okBtn.textContent = okLabel;
+    cancelBtn.textContent = cancelLabel;
+    overlay.style.display = 'flex';
+
+    const cleanup = () => {
+      overlay.style.display = 'none';
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('keydown', onKeydown);
+    };
+    const onOk = () => { const val = showInput ? inputEl.value : true; cleanup(); resolve(val); };
+    const onCancel = () => { cleanup(); resolve(showInput ? null : false); };
+    const onKeydown = (e) => {
+      if(e.key === 'Enter'){ e.preventDefault(); onOk(); }
+      else if(e.key === 'Escape'){ onCancel(); }
+    };
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('keydown', onKeydown);
+    setTimeout(() => { (showInput ? inputEl : okBtn).focus(); if(showInput) inputEl.select(); }, 20);
+  });
+}
+const showPrompt = (message, defaultValue='') => openModal({message, defaultValue, showInput:true});
+const showConfirm = (message) => openModal({message, showInput:false});
+const showAlert = (message) => openModal({message, showInput:false, showCancel:false});
+
 /* =========================================================================
    HISTÓRICO SOMENTE LEITURA — vem da planilha original (meses fechados
    antes de julho/2026). Aparece na aba "Visão Geral" para dar contexto,
@@ -614,9 +676,9 @@ function renderTabbar(){
   document.querySelectorAll('.tab[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => { STATE.activeTab = btn.dataset.tab; saveState(); renderAll(); });
   });
-  document.getElementById('tab-add').addEventListener('click', () => {
+  document.getElementById('tab-add').addEventListener('click', async () => {
     const suggestion = suggestNextMonthLabel();
-    const label = prompt("Nome do novo mês (ex: Agosto / 2026):", suggestion);
+    const label = await showPrompt("Nome do novo mês (ex: Agosto / 2026):", suggestion);
     if(!label) return;
     const lastKey = STATE.monthOrder[STATE.monthOrder.length-1];
     const prev = STATE.months[lastKey];
@@ -964,8 +1026,8 @@ function renderMonth(){
   });
   const delBtn = document.getElementById('delete-month-btn');
   if(delBtn){
-    delBtn.addEventListener('click', () => {
-      if(confirm(`Excluir o mês "${currentMonth().label}"? Essa ação não pode ser desfeita.`)){
+    delBtn.addEventListener('click', async () => {
+      if(await showConfirm(`Excluir o mês "${currentMonth().label}"? Essa ação não pode ser desfeita.`)){
         delete STATE.months[STATE.activeTab];
         STATE.monthOrder = STATE.monthOrder.filter(k => k !== STATE.activeTab);
         STATE.activeTab = STATE.monthOrder[STATE.monthOrder.length-1];
@@ -1243,18 +1305,18 @@ function subcategoryOptionsHTML(catId, selectedId){
 
 /* Cria uma categoria/subcategoria nova a partir do próprio menu da compra
    (quando o usuário escolhe "+ Nova categoria…" / "+ Nova subcategoria…"). */
-function createCategoryInline(){
-  const name = prompt('Nome da nova categoria:');
+async function createCategoryInline(){
+  const name = await showPrompt('Nome da nova categoria:');
   if(!name || !name.trim()) return null;
   const cat = {id:newId('cat'), name:name.trim(), subcategories:[]};
   STATE.categoryDefs.push(cat);
   saveState();
   return cat.id;
 }
-function createSubcategoryInline(catId){
+async function createSubcategoryInline(catId){
   const cat = STATE.categoryDefs.find(c=>c.id===catId);
   if(!cat) return '';
-  const name = prompt('Nome da nova subcategoria:');
+  const name = await showPrompt('Nome da nova subcategoria:');
   if(!name || !name.trim()) return '';
   const sub = {id:newId('sub'), name:name.trim()};
   cat.subcategories.push(sub);
@@ -1513,7 +1575,7 @@ document.body.addEventListener('input', (e) => {
   else if(t.dataset.list === 'transactions'){ renderTransactionsSoft(); renderCategoryBars(); }
 });
 
-document.body.addEventListener('change', (e) => {
+document.body.addEventListener('change', async (e) => {
   const t = e.target;
   if(t.dataset && t.dataset.field === 'typeId' && t.dataset.list === 'bills'){
     const item = findItem('bills', t.dataset.id);
@@ -1526,7 +1588,7 @@ document.body.addEventListener('change', (e) => {
     if(item){
       let newCatId = t.value;
       if(newCatId === NEW_CATEGORY_OPTION){
-        newCatId = createCategoryInline();
+        newCatId = await createCategoryInline();
         if(!newCatId){ t.value = item.categoryId; return; }
         renderCategoryFilterOptions();
       }
@@ -1544,7 +1606,7 @@ document.body.addEventListener('change', (e) => {
     if(item){
       let newSubId = t.value;
       if(newSubId === NEW_CATEGORY_OPTION){
-        newSubId = createSubcategoryInline(item.categoryId);
+        newSubId = await createSubcategoryInline(item.categoryId);
         t.innerHTML = subcategoryOptionsHTML(item.categoryId, newSubId);
       }
       item.subcategoryId = newSubId; saveState();
@@ -1556,7 +1618,7 @@ document.body.addEventListener('change', (e) => {
     if(p){
       let newCatId = t.value;
       if(newCatId === NEW_CATEGORY_OPTION){
-        newCatId = createCategoryInline();
+        newCatId = await createCategoryInline();
         if(!newCatId){ t.value = p.categoryId; return; }
       }
       p.categoryId = newCatId; p.subcategoryId = '';
@@ -1571,7 +1633,7 @@ document.body.addEventListener('change', (e) => {
     if(p){
       let newSubId = t.value;
       if(newSubId === NEW_CATEGORY_OPTION){
-        newSubId = createSubcategoryInline(p.categoryId);
+        newSubId = await createSubcategoryInline(p.categoryId);
         t.innerHTML = subcategoryOptionsHTML(p.categoryId, newSubId);
       }
       p.subcategoryId = newSubId;
@@ -1579,7 +1641,7 @@ document.body.addEventListener('change', (e) => {
   }
 });
 
-document.body.addEventListener('click', (e) => {
+document.body.addEventListener('click', async (e) => {
   const del = e.target.closest('[data-action="del"]');
   if(del){
     const list = del.dataset.list, id = del.dataset.id;
@@ -1589,10 +1651,10 @@ document.body.addEventListener('click', (e) => {
   }
   const delType = e.target.closest('[data-action="del-type"]');
   if(delType){
-    if(STATE.types.length <= 1){ alert('É preciso manter ao menos um tipo de conta.'); return; }
+    if(STATE.types.length <= 1){ await showAlert('É preciso manter ao menos um tipo de conta.'); return; }
     const id = delType.dataset.typeId;
     const usedElsewhereCount = Object.values(STATE.months).reduce((acc,mo)=>acc + mo.bills.filter(b=>b.typeId===id).length, 0);
-    if(usedElsewhereCount>0 && !confirm(`Esse tipo está sendo usado em ${usedElsewhereCount} conta(s). Elas serão movidas para "${STATE.types.find(x=>x.id!==id).name}". Continuar?`)) return;
+    if(usedElsewhereCount>0 && !(await showConfirm(`Esse tipo está sendo usado em ${usedElsewhereCount} conta(s). Elas serão movidas para "${STATE.types.find(x=>x.id!==id).name}". Continuar?`))) return;
     const fallback = STATE.types.find(x=>x.id!==id).id;
     Object.values(STATE.months).forEach(mo => mo.bills.forEach(b => { if(b.typeId===id) b.typeId = fallback; }));
     STATE.types = STATE.types.filter(x=>x.id!==id);
@@ -1601,11 +1663,11 @@ document.body.addEventListener('click', (e) => {
   }
   const delCategory = e.target.closest('[data-action="del-category"]');
   if(delCategory){
-    if(STATE.categoryDefs.length <= 1){ alert('É preciso manter ao menos uma categoria.'); return; }
+    if(STATE.categoryDefs.length <= 1){ await showAlert('É preciso manter ao menos uma categoria.'); return; }
     const id = delCategory.dataset.catId;
     const usedCount = Object.values(STATE.months).reduce((acc,mo)=>acc + mo.transactions.filter(t=>t.categoryId===id).length, 0);
     const fallback = STATE.categoryDefs.find(x=>x.id!==id);
-    if(usedCount>0 && !confirm(`Essa categoria está sendo usada em ${usedCount} compra(s). Elas serão movidas para "${fallback.name}". Continuar?`)) return;
+    if(usedCount>0 && !(await showConfirm(`Essa categoria está sendo usada em ${usedCount} compra(s). Elas serão movidas para "${fallback.name}". Continuar?`))) return;
     Object.values(STATE.months).forEach(mo => mo.transactions.forEach(t => { if(t.categoryId===id){ t.categoryId = fallback.id; t.subcategoryId=''; } }));
     STATE.categoryDefs = STATE.categoryDefs.filter(x=>x.id!==id);
     saveState(); renderAll();
@@ -1623,8 +1685,8 @@ document.body.addEventListener('click', (e) => {
 });
 
 /* ======================= BACKUP ======================= */
-document.getElementById('reset-btn').addEventListener('click', () => {
-  if(confirm('Isso vai apagar todas as suas edições em todos os meses e voltar aos valores originais da planilha. Continuar?')){
+document.getElementById('reset-btn').addEventListener('click', async () => {
+  if(await showConfirm('Isso vai apagar todas as suas edições em todos os meses e voltar aos valores originais da planilha. Continuar?')){
     STATE = defaultState();
     saveState(); renderAll();
   }
@@ -1646,16 +1708,16 @@ document.getElementById('import-input').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try{
       const parsed = JSON.parse(reader.result);
       if(!parsed.months || !parsed.monthOrder || !parsed.types) throw new Error('formato inválido');
       STATE = normalizeState(parsed);
       if(!STATE.months[STATE.activeTab]) STATE.activeTab = 'overview';
       saveState(); renderAll();
-      alert('Backup importado com sucesso!');
+      await showAlert('Backup importado com sucesso!');
     }catch(err){
-      alert('Não consegui ler esse arquivo como backup do dashboard. Confira se é o arquivo .json certo (exportado por este mesmo dashboard).');
+      await showAlert('Não consegui ler esse arquivo como backup do dashboard. Confira se é o arquivo .json certo (exportado por este mesmo dashboard).');
     }
   };
   reader.readAsText(file);
