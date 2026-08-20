@@ -270,6 +270,10 @@
   .cat-bar-ro-top .n{ color:var(--text-primary); font-weight:500; }
   .cat-bar-ro-top .v{ color:var(--text-secondary); font-variant-numeric:tabular-nums; }
   .tx-checkbox-col{ width:26px; }
+  .tx-total-tile{ background:var(--tile-purple-bg); border-radius:12px; padding:10px 18px; text-align:right; flex:none; }
+  .tx-total-tile .label{ font-size:10.5px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.05em; font-weight:600; margin-bottom:4px; }
+  .tx-total-tile .value{ font-size:20px; font-weight:700; color:var(--tile-purple-fg); font-variant-numeric:tabular-nums; }
+  @media (max-width:640px){ .tx-total-tile{ text-align:left; } .card-head{ flex-direction:column; } }
   .modal-overlay{ position:fixed; inset:0; background:rgba(20,16,31,0.45); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px; }
   .modal-box{ background:var(--surface-1); border:1px solid var(--border); border-radius:14px; padding:22px 24px; max-width:380px; width:100%; box-shadow:0 12px 40px rgba(0,0,0,.28); }
   .modal-message{ font-size:14px; color:var(--text-primary); white-space:pre-line; line-height:1.5; }
@@ -899,8 +903,16 @@ function monthTemplate(){
     </section>
 
     <section class="card" style="margin-bottom:12px;">
-      <h2 class="dot-gold">Compras do cartão</h2>
-      <div class="card-sub">Importe a fatura e classifique cada compra por categoria e subcategoria</div>
+      <div class="card-head">
+        <div>
+          <h2 class="dot-gold">Compras do cartão</h2>
+          <div class="card-sub">Importe a fatura e classifique cada compra por categoria e subcategoria</div>
+        </div>
+        <div class="tx-total-tile">
+          <div class="label">Total gasto no cartão</div>
+          <div class="value" id="tx-total-value">R$ 0,00</div>
+        </div>
+      </div>
 
       <details class="cat-manager" id="cat-manager-details">
         <summary>Gerenciar categorias e subcategorias</summary>
@@ -1353,9 +1365,15 @@ function getFilteredSortedTransactions(){
   return list;
 }
 
+function updateTxTotalTile(){
+  const el = document.getElementById('tx-total-value');
+  if(el) el.textContent = BRL(sumBy(currentMonth().transactions));
+}
+
 function renderTransactions(){
   const all = currentMonth().transactions;
   renderCategoryFilterOptions();
+  updateTxTotalTile();
   const list = getFilteredSortedTransactions();
   const filtered = list.length !== all.length;
   document.getElementById('tx-sub').textContent = all.length
@@ -1391,6 +1409,7 @@ function renderTransactionsSoft(){
   document.getElementById('tx-sub').textContent = txs.length
     ? `${txs.length} compra(s) · total ${BRL(sumBy(txs))}`
     : 'Nenhuma compra ainda — importe a fatura acima ou adicione manualmente';
+  updateTxTotalTile();
 }
 
 function analyzeInvoicePaste(){
