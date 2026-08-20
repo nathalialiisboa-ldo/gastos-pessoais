@@ -192,6 +192,8 @@
   .tooltip .t-row{ display:flex; justify-content:space-between; gap:14px; }
 
   table{ width:100%; border-collapse:collapse; font-size:13px; }
+  .table-scroll{ max-height:420px; overflow-y:auto; overflow-x:auto; }
+  .table-scroll thead th{ position:sticky; top:0; z-index:1; background:var(--surface-1); box-shadow:0 1px 0 var(--grid); }
   th{ text-align:left; color:var(--muted); font-weight:600; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; padding:0 6px 9px; border-bottom:1px solid var(--grid); }
   td{ padding:7px 6px; border-bottom:1px solid var(--grid); font-variant-numeric:tabular-nums; vertical-align:middle; }
   tr:last-child td{ border-bottom:none; }
@@ -740,10 +742,12 @@ function overviewTemplate(){
     <section class="card">
       <h2 class="dot-gold">Meses registrados</h2>
       <div class="card-sub">Clique em "Abrir mês" para editar as contas daquele mês</div>
+      <div class="table-scroll">
       <table class="overview-table">
         <thead><tr><th>Mês</th><th class="right">Renda</th><th class="right">Despesa</th><th class="right">Saldo</th><th></th><th></th></tr></thead>
         <tbody id="ov-table-body"></tbody>
       </table>
+      </div>
     </section>
   `;
 }
@@ -938,7 +942,7 @@ function monthTemplate(){
       <div id="import-preview-wrap" style="display:none; margin-top:18px;">
         <h3>Revise antes de importar</h3>
         <div class="card-sub" id="import-preview-sub"></div>
-        <div style="overflow-x:auto;">
+        <div class="table-scroll">
         <table>
           <thead><tr>
             <th class="tx-checkbox-col"></th><th>Data</th><th>Estabelecimento</th><th class="right">Valor (R$)</th>
@@ -968,7 +972,7 @@ function monthTemplate(){
         </select>
         <button class="btn ghost" id="tx-clear-filters" style="font-size:12px; padding:6px 10px;">Limpar filtros</button>
       </div>
-      <div style="overflow-x:auto;">
+      <div class="table-scroll">
       <table>
         <thead><tr>
           <th class="sortable" data-sort-key="date">Data</th><th>Estabelecimento</th><th class="right sortable" data-sort-key="value">Valor (R$)</th>
@@ -996,6 +1000,7 @@ function monthTemplate(){
           <button class="btn ghost" id="add-type-btn">+ Criar tipo</button>
         </div>
 
+        <div class="table-scroll">
         <table>
           <thead>
             <tr>
@@ -1005,6 +1010,7 @@ function monthTemplate(){
           </thead>
           <tbody id="bills-body"></tbody>
         </table>
+        </div>
         <button class="add-row-btn" id="add-bill">+ Adicionar conta</button>
 
         <h2 style="margin-top:24px;" class="dot-gold">Renda</h2>
@@ -1016,10 +1022,12 @@ function monthTemplate(){
       <div class="card">
         <h2>Assinaturas / Recorrência</h2>
         <div class="card-sub">Cobranças recorrentes no cartão</div>
+        <div class="table-scroll">
         <table>
           <thead><tr><th>Serviço</th><th class="right">Valor</th><th></th></tr></thead>
           <tbody id="subs-body"></tbody>
         </table>
+        </div>
         <button class="add-row-btn" id="add-sub">+ Adicionar assinatura</button>
       </div>
     </section>
@@ -1390,7 +1398,7 @@ function renderTransactions(){
     <tr data-id="${tx.id}">
       <td><input class="cell" data-field="date" data-list="transactions" data-id="${tx.id}" value="${escapeAttr(tx.date)}" placeholder="DD/MM" style="width:70px;"></td>
       <td><input class="cell" data-field="description" data-list="transactions" data-id="${tx.id}" value="${escapeAttr(tx.description)}"></td>
-      <td><input class="cell num" data-field="value" data-list="transactions" data-id="${tx.id}" type="number" step="0.01" value="${tx.value}"></td>
+      <td><input class="cell num currency-input" data-field="value" data-list="transactions" data-id="${tx.id}" type="text" inputmode="decimal" value="${BRL(tx.value)}"></td>
       <td><select class="cell" data-field="categoryId" data-list="transactions" data-id="${tx.id}">${categoryOptionsHTML(tx.categoryId)}</select></td>
       <td><select class="cell" data-field="subcategoryId" data-list="transactions" data-id="${tx.id}">${subcategoryOptionsHTML(tx.categoryId, tx.subcategoryId)}</select></td>
       <td class="center"><input type="checkbox" data-field="parcelado" data-list="transactions" data-id="${tx.id}" ${tx.parcelado?'checked':''}></td>
@@ -1451,7 +1459,7 @@ function renderImportPreview(){
       <td class="center"><input type="checkbox" data-prev-field="include" data-prev-id="${p.id}" ${p.include?'checked':''}></td>
       <td><input class="cell" data-prev-field="date" data-prev-id="${p.id}" value="${escapeAttr(p.date)}" style="width:60px;"></td>
       <td><input class="cell" data-prev-field="description" data-prev-id="${p.id}" value="${escapeAttr(p.description)}"></td>
-      <td><input class="cell num" data-prev-field="value" data-prev-id="${p.id}" type="number" step="0.01" value="${p.value}"></td>
+      <td><input class="cell num currency-input" data-prev-field="value" data-prev-id="${p.id}" type="text" inputmode="decimal" value="${BRL(p.value)}"></td>
       <td><select class="cell" data-prev-field="categoryId" data-prev-id="${p.id}">${categoryOptionsHTML(p.categoryId)}</select></td>
       <td><select class="cell" data-prev-field="subcategoryId" data-prev-id="${p.id}">${subcategoryOptionsHTML(p.categoryId, p.subcategoryId)}</select></td>
       <td class="center"><input type="checkbox" data-prev-field="parcelado" data-prev-id="${p.id}" ${p.parcelado?'checked':''}></td>
@@ -1519,7 +1527,7 @@ function renderBills(){
           ${STATE.types.map(t => `<option value="${t.id}" ${b.typeId===t.id?'selected':''}>${escapeAttr(t.name)}</option>`).join('')}
         </select>
       </td>
-      <td><input class="cell num" data-field="value" data-list="bills" data-id="${b.id}" type="number" step="0.01" value="${b.value}"></td>
+      <td><input class="cell num currency-input" data-field="value" data-list="bills" data-id="${b.id}" type="text" inputmode="decimal" value="${BRL(b.value)}"></td>
       <td class="center"><input class="cell" data-field="dueDate" data-list="bills" data-id="${b.id}" type="date" value="${b.dueDate||''}"></td>
       <td class="center"><input type="checkbox" data-field="paid" data-list="bills" data-id="${b.id}" ${b.paid?'checked':''}></td>
       <td class="center">${billStatusBadge(b)}</td>
@@ -1577,14 +1585,27 @@ function renderSubsSoft(){
 /* ======================= EDIÇÃO (delegação de eventos) ======================= */
 function findItem(list, id){ return currentMonth()[list].find(x => x.id === id); }
 
+/* Máscara de moeda (R$): digita-se só números e eles preenchem a partir dos
+   centavos, formatando como Real brasileiro em tempo real (ex: "150025" vira
+   "R$ 1.500,25"). Usada nos campos de valor de Contas a pagar e Compras do
+   cartão. Também mantém o cursor no fim do texto, como em apps de banco. */
+function maskCurrencyInput(el){
+  const digits = el.value.replace(/\D/g,'').replace(/^0+(?=\d)/, '');
+  const num = digits ? parseInt(digits, 10) / 100 : 0;
+  el.value = BRL(num);
+  return num;
+}
+
 document.body.addEventListener('input', (e) => {
   const t = e.target;
+  const isCurrency = t.classList && t.classList.contains('currency-input');
 
   if(t.dataset && t.dataset.prevId){
     const p = IMPORT_PREVIEW.find(x=>x.id===t.dataset.prevId);
     if(!p) return;
     const field = t.dataset.prevField;
-    if(t.type === 'number'){ p[field] = t.value === '' ? 0 : parseFloat(t.value); }
+    if(isCurrency){ p[field] = maskCurrencyInput(t); }
+    else if(t.type === 'number'){ p[field] = t.value === '' ? 0 : parseFloat(t.value); }
     else if(t.type === 'checkbox'){ p[field] = t.checked; }
     else { p[field] = t.value; }
     return;
@@ -1594,7 +1615,8 @@ document.body.addEventListener('input', (e) => {
   const item = findItem(t.dataset.list, t.dataset.id);
   if(!item) return;
   const field = t.dataset.field;
-  if(t.type === 'number'){ item[field] = t.value === '' ? 0 : parseFloat(t.value); }
+  if(isCurrency){ item[field] = maskCurrencyInput(t); }
+  else if(t.type === 'number'){ item[field] = t.value === '' ? 0 : parseFloat(t.value); }
   else if(t.type === 'checkbox'){ item[field] = t.checked; }
   else { item[field] = t.value; }
   saveState();
