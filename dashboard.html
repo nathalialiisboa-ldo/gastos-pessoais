@@ -216,6 +216,11 @@
   .badge.overdue{ background:rgba(193,69,69,.13); color:var(--critical); }
   .badge.none{ background:var(--grid); color:var(--muted); }
 
+  .reorder-btns{ display:flex; flex-direction:column; gap:1px; align-items:center; }
+  .reorder-btn{ background:transparent; border:none; color:var(--muted); cursor:pointer; font-size:11px; padding:1px 4px; border-radius:5px; line-height:1.3; }
+  .reorder-btn:hover{ color:var(--accent); background:var(--accent-soft); }
+  .reorder-btn:disabled{ opacity:.25; cursor:default; }
+  .reorder-btn:disabled:hover{ color:var(--muted); background:transparent; }
   .row-del-btn{ background:transparent; border:none; color:var(--muted); cursor:pointer; font-size:15px; padding:4px 6px; border-radius:7px; line-height:1; }
   .row-del-btn:hover{ background:rgba(193,69,69,.1); color:var(--critical); }
   .add-row-btn{ margin-top:10px; background:transparent; border:1.5px dashed var(--border); color:var(--text-secondary); border-radius:10px; padding:9px 12px; font-size:12px; font-weight:600; cursor:pointer; width:100%; }
@@ -980,7 +985,7 @@ function monthTemplate(){
         <div class="card-head">
           <div>
             <h2>Contas a pagar</h2>
-            <div class="card-sub">Marque "Pago", defina o vencimento e o tipo de cada conta</div>
+            <div class="card-sub">Marque "Pago", defina o vencimento e o tipo de cada conta — use as setas para reordenar</div>
           </div>
         </div>
 
@@ -994,7 +999,7 @@ function monthTemplate(){
         <table>
           <thead>
             <tr>
-              <th>Conta</th><th>Tipo</th><th class="right">Valor</th>
+              <th class="center" style="width:52px;">Ordem</th><th>Conta</th><th>Tipo</th><th class="right">Valor</th>
               <th class="center">Vencimento</th><th class="center">Pago</th><th class="center">Status</th><th></th>
             </tr>
           </thead>
@@ -1499,8 +1504,15 @@ function billStatusBadge(b){
 }
 
 function renderBills(){
-  document.getElementById('bills-body').innerHTML = currentMonth().bills.map(b => `
+  const bills = currentMonth().bills;
+  document.getElementById('bills-body').innerHTML = bills.map((b,i) => `
     <tr data-id="${b.id}">
+      <td class="center">
+        <div class="reorder-btns">
+          <button class="reorder-btn" data-action="move-up" data-list="bills" data-id="${b.id}" title="Mover para cima" ${i===0?'disabled':''}>▲</button>
+          <button class="reorder-btn" data-action="move-down" data-list="bills" data-id="${b.id}" title="Mover para baixo" ${i===bills.length-1?'disabled':''}>▼</button>
+        </div>
+      </td>
       <td><input class="cell" data-field="name" data-list="bills" data-id="${b.id}" value="${escapeAttr(b.name)}"></td>
       <td>
         <select class="cell" data-field="typeId" data-list="bills" data-id="${b.id}">
@@ -1515,7 +1527,7 @@ function renderBills(){
     </tr>
   `).join('') + `
     <tr style="font-weight:700;">
-      <td>Total</td><td></td>
+      <td></td><td>Total</td><td></td>
       <td class="right">${BRL(totalBills())}</td>
       <td></td><td></td><td></td><td></td>
     </tr>`;
@@ -1666,6 +1678,18 @@ document.body.addEventListener('click', async (e) => {
     const list = del.dataset.list, id = del.dataset.id;
     currentMonth()[list] = currentMonth()[list].filter(x => x.id !== id);
     saveState(); renderAll();
+    return;
+  }
+  const move = e.target.closest('[data-action="move-up"], [data-action="move-down"]');
+  if(move){
+    const list = move.dataset.list, id = move.dataset.id;
+    const arr = currentMonth()[list];
+    const idx = arr.findIndex(x => x.id === id);
+    const dir = move.dataset.action === 'move-up' ? -1 : 1;
+    const swapIdx = idx + dir;
+    if(idx < 0 || swapIdx < 0 || swapIdx >= arr.length) return;
+    [arr[idx], arr[swapIdx]] = [arr[swapIdx], arr[idx]];
+    saveState(); renderBills();
     return;
   }
   const delType = e.target.closest('[data-action="del-type"]');
