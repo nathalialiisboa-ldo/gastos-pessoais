@@ -1558,7 +1558,7 @@ function renderIncome(){
   document.getElementById('income-list').innerHTML = currentMonth().income.map(inc => `
     <div class="income-row" data-id="${inc.id}">
       <input class="cell name" data-field="name" data-list="income" data-id="${inc.id}" value="${escapeAttr(inc.name)}">
-      <input class="cell num" data-field="value" data-list="income" data-id="${inc.id}" type="number" step="0.01" value="${inc.value}">
+      <input class="cell num currency-input" data-field="value" data-list="income" data-id="${inc.id}" type="text" inputmode="decimal" value="${BRL(inc.value)}">
       <button class="row-del-btn" data-action="del" data-list="income" data-id="${inc.id}" title="Remover">✕</button>
     </div>
   `).join('');
@@ -1569,7 +1569,7 @@ function renderSubs(){
   document.getElementById('subs-body').innerHTML = currentMonth().subscriptions.map(s => `
     <tr data-id="${s.id}">
       <td><input class="cell" data-field="name" data-list="subscriptions" data-id="${s.id}" value="${escapeAttr(s.name)}"></td>
-      <td><input class="cell num" data-field="value" data-list="subscriptions" data-id="${s.id}" type="number" step="0.01" value="${s.value}"></td>
+      <td><input class="cell num currency-input" data-field="value" data-list="subscriptions" data-id="${s.id}" type="text" inputmode="decimal" value="${BRL(s.value)}"></td>
       <td class="center"><button class="row-del-btn" data-action="del" data-list="subscriptions" data-id="${s.id}" title="Remover">✕</button></td>
     </tr>
   `).join('') + `
