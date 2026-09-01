@@ -1530,7 +1530,7 @@ function renderBills(){
       <td><input class="cell num currency-input" data-field="value" data-list="bills" data-id="${b.id}" type="text" inputmode="decimal" value="${BRL(b.value)}"></td>
       <td class="center"><input class="cell" data-field="dueDate" data-list="bills" data-id="${b.id}" type="date" value="${b.dueDate||''}"></td>
       <td class="center"><input type="checkbox" data-field="paid" data-list="bills" data-id="${b.id}" ${b.paid?'checked':''}></td>
-      <td class="center">${billStatusBadge(b)}</td>
+      <td class="center status-cell">${billStatusBadge(b)}</td>
       <td class="center"><button class="row-del-btn" data-action="del" data-list="bills" data-id="${b.id}" title="Remover">✕</button></td>
     </tr>
   `).join('') + `
@@ -1545,7 +1545,7 @@ function renderBillsSoft(){
   document.querySelectorAll('#bills-body tr[data-id]').forEach(tr => {
     const b = currentMonth().bills.find(x=>x.id===tr.dataset.id);
     if(!b) return;
-    const statusCell = tr.children[5];
+    const statusCell = tr.querySelector('.status-cell');
     if(statusCell) statusCell.innerHTML = billStatusBadge(b);
     const typeSelect = tr.querySelector('select[data-field="typeId"]');
     if(typeSelect) typeSelect.innerHTML = STATE.types.map(t => `<option value="${t.id}" ${b.typeId===t.id?'selected':''}>${escapeAttr(t.name)}</option>`).join('');
